@@ -35,7 +35,7 @@ Requires Zotero 7 or 8.
 ## Building from source
 
 ```bash
-git clone https://github.com/pzoot/group-tabs-by-collection.git
+git clone https://github.com/ppavlidis/group-tabs-by-collection.git
 cd group-tabs-by-collection
 bash build-xpi.sh
 ```

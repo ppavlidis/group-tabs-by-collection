@@ -10,7 +10,7 @@
 	"applications": {
 		"zotero": {
 			"id": "group-tabs-by-collection@example.com",
-			"update_url": "https://raw.githubusercontent.com/pzoot/group-tabs-by-collection/main/updates.json",
+			"update_url": "https://raw.githubusercontent.com/ppavlidis/group-tabs-by-collection/main/updates.json",
 			"strict_min_version": "7.0.0",
 			"strict_max_version": "8.*"
 		}
