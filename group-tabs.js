@@ -309,7 +309,7 @@ var GroupTabsByCollection = {
 					name: c.name,
 					color: this.COLORS[nameToGroup.size % this.COLORS.length],
 					tabIds: [],
-					collapsed: false,
+					collapsed: true,
 				};
 				nameToGroup.set(c.name, g);
 				groups.push(g);
@@ -385,7 +385,7 @@ var GroupTabsByCollection = {
 		chip.innerHTML =
 			`<span class="gtbc-chip-dot"></span>` +
 			`<span class="gtbc-chip-name">${this._escapeHtml(this._truncate(label, 22))}</span>` +
-			`<span class="gtbc-chip-arrow">${group.collapsed ? "▸" : "▾"}</span>`;
+			`<span class="gtbc-chip-arrow">${group.collapsed ? "▶" : "▼"}</span>`;
 
 		chip.title = group.collapsed
 			? `Expand "${group.name}" (${group.tabIds.length} tab${group.tabIds.length === 1 ? "" : "s"})`

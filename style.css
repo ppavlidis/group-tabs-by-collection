@@ -44,54 +44,56 @@
 .gtbc-chip {
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
+	gap: 5px;
 	align-self: center;
-	height: 20px;
-	margin: 0 2px 0 4px;
-	padding: 0 7px 0 5px;
-	border-radius: 4px;
+	height: 22px;
+	margin: 0 3px 0 5px;
+	padding: 0 9px 0 7px;
+	border-radius: 11px;       /* full pill */
 	background: var(--gtbc-color, #4d6b8a);
 	color: #fff;
-	font-size: 11px;
+	font-size: 12px;
 	font-family: inherit;
+	font-weight: 500;
 	line-height: 1;
+	letter-spacing: 0.01em;
 	cursor: pointer;
 	user-select: none;
 	white-space: nowrap;
 	flex-shrink: 0;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-	transition: opacity 0.12s, filter 0.12s;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
+	transition: filter 0.12s;
 }
 
 .gtbc-chip:hover {
-	filter: brightness(1.1);
+	filter: brightness(1.12);
 }
 
 .gtbc-chip:active {
-	filter: brightness(0.9);
+	filter: brightness(0.88);
 }
 
-/* Coloured dot on the left side of the chip */
+/* Coloured dot — slightly lighter than the pill background */
 .gtbc-chip-dot {
 	display: inline-block;
-	width: 7px;
-	height: 7px;
+	width: 8px;
+	height: 8px;
 	border-radius: 50%;
-	background: rgba(255, 255, 255, 0.65);
+	background: rgba(255, 255, 255, 0.60);
 	flex-shrink: 0;
 }
 
 /* Collection name, truncated by max-width */
 .gtbc-chip-name {
-	max-width: 120px;
+	max-width: 130px;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	font-weight: 500;
 }
 
-/* Collapse/expand arrow */
+/* Collapse/expand arrow — solid Unicode triangle, fully opaque */
 .gtbc-chip-arrow {
-	font-size: 9px;
-	opacity: 0.8;
+	font-size: 10px;
+	opacity: 1;
 	flex-shrink: 0;
+	line-height: 1;
 }
