@@ -1,0 +1,97 @@
+/* Group Tabs by Collection — stylesheet */
+
+/* ── Toolbar trigger button ──────────────────────────────────────────────── */
+.gtbc-group-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 24px;
+	height: 24px;
+	margin: 0 2px;
+	padding: 0;
+	border: none;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--material-toolbar-icon, #4d6b8a);
+	cursor: pointer;
+	opacity: 0.75;
+	align-self: center;
+	transition: opacity 0.1s, background 0.1s;
+}
+
+.gtbc-group-button:hover {
+	opacity: 1;
+	background: var(--fill-quinary, rgba(0, 0, 0, 0.07));
+}
+
+.gtbc-group-button:active {
+	background: var(--fill-quaternary, rgba(0, 0, 0, 0.12));
+}
+
+.gtbc-group-button svg {
+	pointer-events: none;
+}
+
+/* ── Group chip ──────────────────────────────────────────────────────────── */
+
+/*
+ * The chip is injected as a sibling of .tab elements inside the React-
+ * rendered tab bar flex container. It aligns naturally in the tab row.
+ *
+ * --gtbc-color is set inline per chip.
+ */
+.gtbc-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	align-self: center;
+	height: 20px;
+	margin: 0 2px 0 4px;
+	padding: 0 7px 0 5px;
+	border-radius: 4px;
+	background: var(--gtbc-color, #4d6b8a);
+	color: #fff;
+	font-size: 11px;
+	font-family: inherit;
+	line-height: 1;
+	cursor: pointer;
+	user-select: none;
+	white-space: nowrap;
+	flex-shrink: 0;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+	transition: opacity 0.12s, filter 0.12s;
+}
+
+.gtbc-chip:hover {
+	filter: brightness(1.1);
+}
+
+.gtbc-chip:active {
+	filter: brightness(0.9);
+}
+
+/* Coloured dot on the left side of the chip */
+.gtbc-chip-dot {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.65);
+	flex-shrink: 0;
+}
+
+/* Collection name, truncated by max-width */
+.gtbc-chip-name {
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-weight: 500;
+}
+
+/* Collapse/expand arrow */
+.gtbc-chip-arrow {
+	font-size: 9px;
+	opacity: 0.8;
+	flex-shrink: 0;
+}
