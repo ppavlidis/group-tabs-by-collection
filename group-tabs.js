@@ -277,6 +277,15 @@ var GroupTabsByCollection = {
 			return;
 		}
 
+		// If groups already exist, only pull in tabs that aren't assigned yet.
+		// This preserves manually moved tabs and existing group colours/order.
+		const existingState = this._state.get(window);
+		if (existingState && existingState.groups.length > 0) {
+			await this._groupNewTabs(window, readerTabs, ZoteroTabs);
+			return;
+		}
+
+		// No groups yet — full initial grouping.
 		const tabInfos = await this._buildTabInfos(readerTabs);
 		const conflicts = tabInfos.filter((ti) => ti.collections.length > 1);
 
@@ -285,11 +294,50 @@ var GroupTabsByCollection = {
 			if (!proceed) return;
 		}
 
-		const existingOverrides = this._state.get(window)?.overrides ?? new Map();
+		const existingOverrides = existingState?.overrides ?? new Map();
 		this._applyGrouping(window, tabInfos, ZoteroTabs, existingOverrides);
 		this._buildGroupState(window, tabInfos, existingOverrides);
 		this._renderGroupChips(window, "groupTabs");
 		this._setupTabBarObserver(window);
+		this._saveState(window);
+	},
+
+	// Incremental grouping: called when groups already exist.
+	// Creates group entries for any new collections, then re-renders.
+	// Already-grouped tabs are untouched; their order and overrides are preserved.
+	async _groupNewTabs(window, readerTabs, ZoteroTabs) {
+		const st = this._state.get(window);
+		const groupedIds = new Set(st.groups.flatMap((g) => g.tabIds));
+		const newTabs = readerTabs.filter((t) => !groupedIds.has(t.id));
+
+		if (newTabs.length === 0) return;
+
+		const tabInfos = await this._buildTabInfos(newTabs);
+		const conflicts = tabInfos.filter((ti) => ti.collections.length > 1);
+		if (conflicts.length > 0) {
+			const proceed = this._handleConflicts(window, conflicts);
+			if (!proceed) return;
+		}
+
+		// Create a group entry for any collection not yet represented.
+		// _renderGroupChips step 3 will handle assigning the actual tab IDs.
+		const usedColors = new Set(st.groups.map((g) => g.color));
+		let ci = 0;
+		for (const ti of tabInfos) {
+			const colName = ti.selectedCollection?.name;
+			if (!colName) continue;
+			if (st.groups.find((g) => g.name === colName)) continue;
+			while (usedColors.has(this.COLORS[ci % this.COLORS.length])) ci++;
+			const color = this.COLORS[ci++ % this.COLORS.length];
+			usedColors.add(color);
+			st.groups.push({ name: colName, color, tabIds: [], collapsed: false });
+		}
+		st.groups.sort((a, b) => a.name.localeCompare(b.name));
+
+		if (st.tabBarObs) st.tabBarObs.disconnect();
+		this._renderGroupChips(window, "groupTabs");
+		const tabBar = window.document.getElementById("tab-bar-container");
+		if (st.tabBarObs && tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 		this._saveState(window);
 	},
 
