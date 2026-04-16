@@ -57,6 +57,6 @@ Rename-Item group-tabs-by-collection.zip group-tabs-by-collection.xpi
 
 Then install the resulting `group-tabs-by-collection.xpi` as above.
 
-## Known problems and limitations
+## Notes
 
-When Zotero is re-started, the groups are exploded again. Click the four-box icon to regroup them.
+Groups are not persisted across Zotero restarts — click the four-box button to regroup after reopening your tabs.
