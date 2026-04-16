@@ -418,13 +418,13 @@ var GroupTabsByCollection = {
 		chip.addEventListener("contextmenu", (e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			this._showChipContextMenu(doc, window, group, e.screenX, e.screenY);
+			this._showChipContextMenu(doc, window, group, chip);
 		});
 
 		return chip;
 	},
 
-	_showChipContextMenu(doc, window, group, screenX, screenY) {
+	_showChipContextMenu(doc, window, group, anchorEl) {
 		const XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 		// Remove any leftover popup from a previous right-click.
@@ -444,7 +444,10 @@ var GroupTabsByCollection = {
 		popup.appendChild(closeAll);
 
 		doc.documentElement.appendChild(popup);
-		popup.openPopupAtScreen(screenX, screenY, true);
+		// openPopup(anchor, position) avoids the coordinate-space mismatch
+		// between MouseEvent.screenX/Y (CSS px) and openPopupAtScreen
+		// (physical px) that affects HiDPI Windows and Linux displays.
+		popup.openPopup(anchorEl, "after_start", 0, 0, true, false);
 		popup.addEventListener("popuphidden", () => popup.remove(), { once: true });
 	},
 

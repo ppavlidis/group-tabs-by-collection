@@ -36,10 +36,19 @@ Requires Zotero 7 or 8.
 
 ## Building from source
 
+**macOS / Linux**
 ```bash
 git clone https://github.com/ppavlidis/group-tabs-by-collection.git
 cd group-tabs-by-collection
 bash build-xpi.sh
+```
+
+**Windows** (PowerShell, no WSL required)
+```powershell
+git clone https://github.com/ppavlidis/group-tabs-by-collection.git
+cd group-tabs-by-collection
+Compress-Archive -Path manifest.json,bootstrap.js,group-tabs.js,style.css,updates.json,content -DestinationPath group-tabs-by-collection.zip -Force
+Rename-Item group-tabs-by-collection.zip group-tabs-by-collection.xpi
 ```
 
 Then install the resulting `group-tabs-by-collection.xpi` as above.
