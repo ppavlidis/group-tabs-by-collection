@@ -13,20 +13,22 @@ When you have many PDFs or snapshots open at once, the Zotero tab bar becomes a 
 - A coloured **group chip** appears before each collection's first tab, labelled with the collection name.
 - **Click a chip** to collapse the group — the tabs fold away and the chip shows a count badge. Click again to expand.
 - **Right-click a chip** for a context menu with **"Close all tabs in …"**.
+- **Right-click a tab** for an **"Add to tab group"** submenu to move it into an existing group.
+- **Right-click items** in the item list for an **"Open in tab group(s)"** option that opens and groups them in one step.
 - When there are multiple groups, all start **collapsed** so you get an instant overview. When everything belongs to one collection the group starts expanded (collapsing it would leave nothing visible).
+- Newly opened tabs are automatically assigned to an existing group if they belong to that collection — no need to re-run the command.
 - Up to 8 distinct colours are assigned automatically (blue, green, orange, purple, teal, rose, amber, indigo).
+- Tabs within a group are tinted with that group's colour.
 - Items with no collection are placed at the end, ungrouped.
-
-If a tab's item belongs to **multiple collections**, the plugin may show a confirmation dialog listing each conflict and suggesting a default resolution (the first collection alphabetically). You can proceed or cancel.
 
 ## Usage
 
-1. Open several PDFs or snapshots from different collections.
-2. Go to **Tools → Group Tabs by Collection**.
-3. Tabs are reordered and coloured group chips appear in the tab bar.
-4. Click a chip to expand it; right-click for close-all.
+1. Select papers in the item list and right-click → **"Open in tab group(s)"** to open and group them in one step, or open PDFs/snapshots manually and then click the **four-box button** in the tab bar (or **Tools → Group Tabs by Collection**).
+2. Tabs are reordered and coloured group chips appear in the tab bar.
+3. Click a chip to collapse or expand that group; right-click for close-all.
+4. Newly opened tabs are automatically slotted into the correct group — run the command again only if you want a full re-sort.
 
-The grouping is **on-demand** — run it again any time you open new tabs and want to re-sort.
+If a tab's item belongs to **multiple collections**, a confirmation dialog lists each conflict and suggests a default resolution (the first collection alphabetically).
 
 ## Installation
 
@@ -34,7 +36,7 @@ Download the latest `group-tabs-by-collection.xpi` from the [Releases](../../rel
 
 In Zotero: **Tools → Add-ons → gear icon → Install Add-on From File…**
 
-Requires Zotero 7 or 8.
+Requires Zotero 7, 8, or 9.
 
 ## Building from source
 
