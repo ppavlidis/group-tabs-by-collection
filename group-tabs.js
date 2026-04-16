@@ -67,6 +67,7 @@ var GroupTabsByCollection = {
 		this._addMenuItem(window);
 		this._addGroupButton(window);
 		this._addItemContextMenu(window);
+		this._addCollectionContextMenu(window);
 		this._setupTabContextMenuListener(window);
 
 		// Restore previously saved group state after Zotero has had time
@@ -231,6 +232,31 @@ var GroupTabsByCollection = {
 			item.setAttribute("disabled", hasSelection ? "false" : "true");
 		});
 		itemMenu.appendChild(item);
+		data.addedElementIDs.push(item.id);
+	},
+
+	_addCollectionContextMenu(window) {
+		const doc = window.document;
+		const data = this._windows.get(window);
+		const XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+		const collMenu = doc.getElementById("zotero-collectionmenu");
+		if (!collMenu) return;
+
+		const sep = doc.createElementNS(XUL, "menuseparator");
+		sep.id = "gtbc-collmenu-sep";
+		collMenu.appendChild(sep);
+		data.addedElementIDs.push(sep.id);
+
+		const item = doc.createElementNS(XUL, "menuitem");
+		item.id = "gtbc-collmenu-open";
+		item.setAttribute("label", "Open all in tab group");
+		item.addEventListener("command", () => this._openCollectionAsGroup(window));
+		collMenu.addEventListener("popupshowing", () => {
+			const row = window.ZoteroPane?.getCollectionTreeRow?.();
+			item.setAttribute("disabled", row?.isCollection?.() ? "false" : "true");
+		});
+		collMenu.appendChild(item);
 		data.addedElementIDs.push(item.id);
 	},
 
@@ -856,6 +882,80 @@ var GroupTabsByCollection = {
 
 		try {
 			await pane.viewItems(items);
+		} catch (e) {
+			Zotero.debug(`GTBC: viewItems failed: ${e}`);
+			return;
+		}
+
+		// Brief settle so Zotero finishes registering the new tabs.
+		await new Promise((r) => window.setTimeout(r, 300));
+		await this.groupTabs(window);
+	},
+
+	// ── Collection context menu: "Open all in tab group" ─────────────────────
+
+	async _openCollectionAsGroup(window) {
+		const pane = window.ZoteroPane;
+		if (!pane) return;
+
+		const row = pane.getCollectionTreeRow?.();
+		if (!row?.isCollection?.()) return;
+		const collection = row.collection;
+		if (!collection) return;
+
+		// Find items in this collection that have readable attachments.
+		// We intentionally do not recurse into sub-collections; the user can
+		// right-click those separately.
+		const allItems = collection.getChildItems();
+		const openable = allItems.filter((item) => {
+			if (item.isAttachment()) {
+				return (
+					item.attachmentContentType === "application/pdf" ||
+					item.isSnapshot()
+				);
+			}
+			if (item.isRegularItem()) {
+				return item.getAttachments().some((id) => {
+					const att = Zotero.Items.get(id);
+					return att && (
+						att.attachmentContentType === "application/pdf" ||
+						att.isSnapshot()
+					);
+				});
+			}
+			return false;
+		});
+
+		if (openable.length === 0) {
+			Zotero.alert(
+				window,
+				"Group Tabs by Collection",
+				`No PDFs or snapshots found in "${collection.name}".`
+			);
+			return;
+		}
+
+		const WARN_THRESHOLD = 20;
+		if (openable.length > WARN_THRESHOLD) {
+			const flags =
+				Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
+				Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING;
+			const result = Services.prompt.confirmEx(
+				window,
+				"Group Tabs by Collection",
+				`"${collection.name}" contains ${openable.length} items with attachments. Open all as tabs?`,
+				flags,
+				"Open all",
+				"Cancel",
+				"",
+				null,
+				{}
+			);
+			if (result !== 0) return;
+		}
+
+		try {
+			await pane.viewItems(openable);
 		} catch (e) {
 			Zotero.debug(`GTBC: viewItems failed: ${e}`);
 			return;
