@@ -6,9 +6,10 @@
  *  2. Injects a coloured chip before the first tab of each group.
  *  3. Click a chip to collapse/expand that group.
  *  4. Right-click a chip → "Close all tabs in …"
- *  5. Right-click a tab → "Add to tab group …" submenu.
+ *  5. Right-click a tab  → "Add to tab group …" submenu.
  *  6. Right-click items in the item list → "Open in tab group(s)".
- *  7. A MutationObserver re-injects chips when React re-renders the tab bar.
+ *  7. A MutationObserver re-injects chips when React re-renders the tab bar,
+ *     and auto-assigns any newly opened tabs to their matching group.
  */
 var GroupTabsByCollection = {
 	id: null,
@@ -81,15 +82,12 @@ var GroupTabsByCollection = {
 		if (!data) return;
 		const doc = window.document;
 
-		// Remove injected static elements.
 		for (const id of data.addedElementIDs) doc.getElementById(id)?.remove();
 
-		// Remove tab context-menu listener.
 		if (data.tabContextHandler) {
 			doc.removeEventListener("contextmenu", data.tabContextHandler, true);
 		}
 
-		// Remove lingering chips and clear tab tints.
 		for (const chip of doc.querySelectorAll(".gtbc-chip")) chip.remove();
 		for (const el of doc.querySelectorAll(".tab[data-gtbc-group]")) {
 			el.style.backgroundColor = "";
@@ -157,13 +155,11 @@ var GroupTabsByCollection = {
 		window.setTimeout(tryAdd, 2000);
 	},
 
-	/** Add "Open in tab group(s)" to the Zotero item-list context menu. */
 	_addItemContextMenu(window) {
 		const doc = window.document;
 		const data = this._windows.get(window);
 		const XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-		// Zotero 7 item context menu ID; try both known names.
 		const itemMenu =
 			doc.getElementById("zotero-itemmenu") ||
 			doc.getElementById("itemMenu");
@@ -180,7 +176,6 @@ var GroupTabsByCollection = {
 		item.addEventListener("command", () =>
 			this._openSelectedItemsInGroups(window)
 		);
-		// Show only when items are selected.
 		itemMenu.addEventListener("popupshowing", () => {
 			const hasSelection =
 				(window.ZoteroPane?.getSelectedItems?.()?.length ?? 0) > 0;
@@ -190,28 +185,22 @@ var GroupTabsByCollection = {
 		data.addedElementIDs.push(item.id);
 	},
 
-	/**
-	 * Listen for right-click on any tab element. When groups are active,
-	 * intercept and show our "Add to tab group" submenu. When no groups
-	 * are active, let Zotero's default context menu through unchanged.
-	 */
 	_setupTabContextMenuListener(window) {
 		const doc = window.document;
 		const data = this._windows.get(window);
 
 		const handler = (e) => {
 			const st = this._state.get(window);
-			if (!st || st.groups.length === 0) return; // no groups — let Zotero handle
+			if (!st || st.groups.length === 0) return;
 
 			const tabEl = e.target.closest?.(".tab[data-id]");
-			if (!tabEl) return; // not a tab click
+			if (!tabEl) return;
 
 			e.preventDefault();
 			e.stopPropagation();
 			this._showTabContextMenu(doc, window, tabEl.dataset.id, tabEl);
 		};
 
-		// Capture phase so we see the event before React's handlers.
 		doc.addEventListener("contextmenu", handler, true);
 		data.tabContextHandler = handler;
 	},
@@ -256,33 +245,23 @@ var GroupTabsByCollection = {
 	async _buildTabInfos(tabs) {
 		const infos = [];
 		for (const tab of tabs) {
-			const itemID = tab.data?.itemID;
-			let item = null;
+			const item = this._getParentItem(tab.data?.itemID);
 			let collections = [];
 
-			if (itemID) {
-				item = Zotero.Items.get(itemID);
-				if (item) {
-					let src = item;
-					if (item.isAttachment() && item.parentID) {
-						src = Zotero.Items.get(item.parentID) || item;
-					}
-					const ids = src.getCollections();
-					collections = ids
-						.map((id) => Zotero.Collections.get(id))
-						.filter(Boolean);
-				}
+			if (item) {
+				const raw = item
+					.getCollections()
+					.map((id) => Zotero.Collections.get(id))
+					.filter(Boolean);
+				// Drop ancestor collections: only keep the most specific
+				// (deepest) collections. This prevents "Neuroscience >
+				// Schizophrenia" from showing as a multi-collection conflict.
+				collections = this._filterToLeafCollections(raw);
 			}
 
 			infos.push({
 				tab,
-				// Use parent item so the conflict dialog shows the paper title,
-				// not the attachment filename ("FullText.pdf").
-				item: item
-					? item.isAttachment() && item.parentID
-						? Zotero.Items.get(item.parentID) || item
-						: item
-					: null,
+				item,
 				collections,
 				selectedCollection:
 					collections.length === 1 ? collections[0] : null,
@@ -355,12 +334,12 @@ var GroupTabsByCollection = {
 		let idx = 1;
 		for (const g of sorted) {
 			for (const ti of g.items) {
-				try { window.Zotero_Tabs.move(ti.tab.id, idx++); }
+				try { ZoteroTabs.move(ti.tab.id, idx++); }
 				catch (e) { Zotero.debug(`GTBC: move failed: ${e}`); }
 			}
 		}
 		for (const ti of uncollected) {
-			try { window.Zotero_Tabs.move(ti.tab.id, idx++); }
+			try { ZoteroTabs.move(ti.tab.id, idx++); }
 			catch (e) { Zotero.debug(`GTBC: move failed: ${e}`); }
 		}
 	},
@@ -368,15 +347,19 @@ var GroupTabsByCollection = {
 	// ── Group state & chip rendering ──────────────────────────────────────────
 
 	_buildGroupState(window, tabInfos) {
-		// Cancel any pending debounce timer from the old state BEFORE replacing
-		// it. This is critical: without this, the old timer fires after the new
-		// state is set, re-connects the old observer, and the two observers
-		// fight — causing groups to disappear on a second "Group tabs" run.
+		// Cancel any in-flight debounce timer from the old state before
+		// replacing it, so the old observer callback cannot fire after we set
+		// up the new state and inadvertently reconnect a dead observer.
 		const existing = this._state.get(window);
 		if (existing) {
 			if (existing.tabBarObs) existing.tabBarObs.disconnect();
 			if (existing.debounceTimer) window.clearTimeout(existing.debounceTimer);
 		}
+
+		// Preserve colour and collapsed state for groups that already existed.
+		const existingByName = new Map(
+			(existing?.groups ?? []).map((g) => [g.name, g])
+		);
 
 		const groups = [];
 		const nameToGroup = new Map();
@@ -385,29 +368,42 @@ var GroupTabsByCollection = {
 			const c = ti.selectedCollection;
 			if (!c) continue;
 			if (!nameToGroup.has(c.name)) {
-				const g = {
+				const prev = existingByName.get(c.name);
+				nameToGroup.set(c.name, {
 					name: c.name,
-					color: this.COLORS[nameToGroup.size % this.COLORS.length],
+					color: prev?.color ?? null,     // filled in below for new groups
 					tabIds: [],
-					collapsed: true,
-				};
-				nameToGroup.set(c.name, g);
-				groups.push(g);
+					collapsed: prev?.collapsed ?? null, // filled in below for new groups
+				});
+				groups.push(nameToGroup.get(c.name));
 			}
 			nameToGroup.get(c.name).tabIds.push(ti.tab.id);
 		}
 
 		groups.sort((a, b) => a.name.localeCompare(b.name));
 
-		// Only auto-collapse with multiple groups; a lone group starts expanded.
-		const autoCollapse = groups.length > 1;
-		for (const g of groups) g.collapsed = autoCollapse;
+		// Assign colours to new groups, skipping colours already in use so
+		// re-grouping doesn't change existing groups' colours.
+		const usedColors = new Set(
+			groups.filter((g) => g.color).map((g) => g.color)
+		);
+		let ci = 0;
+		for (const g of groups) {
+			if (!g.color) {
+				while (usedColors.has(this.COLORS[ci % this.COLORS.length])) ci++;
+				g.color = this.COLORS[ci++ % this.COLORS.length];
+				usedColors.add(g.color);
+			}
+		}
 
-		this._state.set(window, {
-			groups,
-			tabBarObs: null,
-			debounceTimer: null,
-		});
+		// Set default collapsed state for new groups only.
+		// Existing groups keep whatever state the user last set.
+		const hasMultiple = groups.length > 1;
+		for (const g of groups) {
+			if (g.collapsed === null) g.collapsed = hasMultiple;
+		}
+
+		this._state.set(window, { groups, tabBarObs: null, debounceTimer: null });
 	},
 
 	_renderGroupChips(window) {
@@ -428,13 +424,37 @@ var GroupTabsByCollection = {
 			g.tabIds = g.tabIds.filter((id) => openTabIds.has(id));
 		}
 
-		// 3. Clear previous tints so stale colour doesn't linger.
+		// 3. Auto-assign newly opened tabs that belong to an existing group.
+		//    This handles the "opened more PDFs after grouping" case without
+		//    requiring the user to re-run Group Tabs.
+		const groupedIds = new Set(st.groups.flatMap((g) => g.tabIds));
+		const allReaderTabs = (ZoteroTabs?._tabs || []).filter(
+			(t) => t.type === "reader" || t.type === "note"
+		);
+		for (const tab of allReaderTabs) {
+			if (groupedIds.has(tab.id)) continue;
+			const item = this._getParentItem(tab.data?.itemID);
+			if (!item) continue;
+			const raw = item.getCollections()
+				.map((id) => Zotero.Collections.get(id)).filter(Boolean);
+			const cols = this._filterToLeafCollections(raw);
+			// Use first matching group (alphabetical order, same as explicit grouping).
+			const match = cols
+				.map((c) => st.groups.find((g) => g.name === c.name))
+				.find(Boolean);
+			if (match) {
+				match.tabIds.push(tab.id);
+				groupedIds.add(tab.id);
+			}
+		}
+
+		// 4. Clear previous tints so stale colour doesn't linger.
 		for (const el of tabBar.querySelectorAll(".tab[data-gtbc-group]")) {
 			el.style.backgroundColor = "";
 			el.removeAttribute("data-gtbc-group");
 		}
 
-		// 4. Apply collapse state + tint to each tab element.
+		// 5. Apply collapse state + tint to each tab element.
 		for (const g of st.groups) {
 			const tint = this._hexToRgba(g.color, 0.15);
 			for (const tabId of g.tabIds) {
@@ -446,14 +466,17 @@ var GroupTabsByCollection = {
 			}
 		}
 
-		// 5. Insert a chip before each group's first tab.
+		// 6. Insert a chip before each group's first tab.
 		for (const g of st.groups) {
 			if (g.tabIds.length === 0) continue;
 			const anchorEl = tabBar.querySelector(
 				`.tab[data-id="${g.tabIds[0]}"]`
 			);
 			if (!anchorEl) continue;
-			anchorEl.parentNode.insertBefore(this._makeChip(doc, g, window), anchorEl);
+			anchorEl.parentNode.insertBefore(
+				this._makeChip(doc, g, window),
+				anchorEl
+			);
 		}
 	},
 
@@ -546,20 +569,18 @@ var GroupTabsByCollection = {
 
 		const currentGroup = this._findGroupForTab(window, tabId);
 
-		// ── "Add to tab group ▶" submenu ───────────────────────────────────
 		const addMenu = doc.createElementNS(XUL, "menu");
 		addMenu.setAttribute("label", "Add to tab group");
 		const addPopup = doc.createElementNS(XUL, "menupopup");
 
 		for (const g of st.groups) {
 			const mi = doc.createElementNS(XUL, "menuitem");
-			mi.setAttribute("label", this._truncate(g.name, 35));
-			mi.setAttribute("type", "checkbox");
-			mi.setAttribute("checked", g === currentGroup ? "true" : "false");
-			// Dot decoration via label prefix using the colour
-			if (g === currentGroup) {
-				mi.setAttribute("label", "✓ " + this._truncate(g.name, 33));
-			}
+			const isCurrent = g === currentGroup;
+			mi.setAttribute(
+				"label",
+				(isCurrent ? "\u2713 " : "") + this._truncate(g.name, 35)
+			);
+			if (isCurrent) mi.setAttribute("disabled", "true");
 			mi.addEventListener("command", () =>
 				this._addTabToGroup(window, tabId, g)
 			);
@@ -595,33 +616,28 @@ var GroupTabsByCollection = {
 		const st = this._state.get(window);
 		if (!st) return;
 
-		// Remove from any current group.
 		for (const g of st.groups) {
 			g.tabIds = g.tabIds.filter((id) => id !== tabId);
 		}
-
-		// Append to target group.
 		targetGroup.tabIds.push(tabId);
 
-		// Move tab in the bar to follow the last existing member of target group
-		// (excluding the tab we just added, which is at the end of tabIds now).
+		// Move tab to follow the last existing member of the target group.
 		const allTabs = ZoteroTabs._tabs || [];
-		const membersBefore = targetGroup.tabIds.slice(0, -1); // all except new one
+		const membersExceptNew = targetGroup.tabIds.slice(0, -1);
 		let insertAfterIdx = -1;
 		for (let i = 0; i < allTabs.length; i++) {
-			if (membersBefore.includes(allTabs[i].id)) insertAfterIdx = i;
+			if (membersExceptNew.includes(allTabs[i].id)) insertAfterIdx = i;
 		}
 		if (insertAfterIdx >= 0) {
 			try { ZoteroTabs.move(tabId, insertAfterIdx + 1); }
 			catch (e) { Zotero.debug(`GTBC: move failed: ${e}`); }
 		}
 
-		const st2 = this._state.get(window); // re-fetch in case state changed
-		if (st2?.tabBarObs) st2.tabBarObs.disconnect();
+		if (st.tabBarObs) st.tabBarObs.disconnect();
 		this._renderGroupChips(window);
-		if (st2?.tabBarObs) {
+		if (st.tabBarObs) {
 			const tabBar = window.document.getElementById("tab-bar-container");
-			if (tabBar) st2.tabBarObs.observe(tabBar, { childList: true, subtree: true });
+			if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 		}
 	},
 
@@ -648,7 +664,6 @@ var GroupTabsByCollection = {
 		const items = pane.getSelectedItems?.() ?? [];
 		if (items.length === 0) return;
 
-		// viewItems opens each item (finding its best attachment automatically).
 		try {
 			await pane.viewItems(items);
 		} catch (e) {
@@ -656,10 +671,8 @@ var GroupTabsByCollection = {
 			return;
 		}
 
-		// Brief delay so Zotero finishes registering the new tabs before
-		// we read Zotero_Tabs._tabs.
+		// Brief settle so Zotero finishes registering the new tabs.
 		await new Promise((r) => window.setTimeout(r, 300));
-
 		await this.groupTabs(window);
 	},
 
@@ -682,12 +695,10 @@ var GroupTabsByCollection = {
 			);
 			if (!chipRemoved) return;
 
-			// Store timer in state so _buildGroupState can cancel it if the user
-			// runs "Group tabs" again before this fires.
 			if (st.debounceTimer) window.clearTimeout(st.debounceTimer);
 			st.debounceTimer = window.setTimeout(() => {
 				st.debounceTimer = null;
-				// Safety: abort if state was replaced (new grouping started).
+				// Abort if a new grouping run has replaced the state.
 				if (this._state.get(window) !== st) return;
 				st.tabBarObs.disconnect();
 				this._renderGroupChips(window);
@@ -699,6 +710,52 @@ var GroupTabsByCollection = {
 	},
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
+
+	/**
+	 * Return the parent item for an attachment, or the item itself otherwise.
+	 * This ensures collection lookups reflect where the paper lives, not the
+	 * attachment filename.
+	 */
+	_getParentItem(itemID) {
+		if (!itemID) return null;
+		const item = Zotero.Items.get(itemID);
+		if (!item) return null;
+		if (item.isAttachment() && item.parentID) {
+			return Zotero.Items.get(item.parentID) || item;
+		}
+		return item;
+	},
+
+	/**
+	 * Given a list of collections an item belongs to, remove any that are
+	 * ancestors of another collection in the same list.
+	 *
+	 * Example: item in [Neuroscience, Schizophrenia] where Schizophrenia ⊂
+	 * Neuroscience → returns [Schizophrenia]. No conflict is raised.
+	 *
+	 * If the item is in two sibling collections (e.g. [Schizophrenia,
+	 * Depression], both children of Neuroscience) both are kept and the caller
+	 * must handle the conflict.
+	 */
+	_filterToLeafCollections(collections) {
+		if (collections.length <= 1) return collections;
+
+		// Collect IDs of every ancestor of every collection in the list.
+		const ancestorIds = new Set();
+		for (const c of collections) {
+			let cur = c;
+			while (cur.parentID) {
+				const parent = Zotero.Collections.get(cur.parentID);
+				if (!parent) break;
+				ancestorIds.add(parent.id);
+				cur = parent;
+			}
+		}
+
+		// Keep only collections that are NOT an ancestor of another in the list.
+		const leaves = collections.filter((c) => !ancestorIds.has(c.id));
+		return leaves.length > 0 ? leaves : collections;
+	},
 
 	_hexToRgba(hex, alpha) {
 		const r = parseInt(hex.slice(1, 3), 16);
