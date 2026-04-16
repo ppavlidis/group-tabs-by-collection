@@ -68,6 +68,10 @@ var GroupTabsByCollection = {
 		this._addGroupButton(window);
 		this._addItemContextMenu(window);
 		this._setupTabContextMenuListener(window);
+
+		// Restore previously saved group state after Zotero has had time
+		// to fully rebuild its tab list from the last session.
+		window.setTimeout(() => this._restoreState(window), 2000);
 	},
 
 	removeFromWindow(window) {
@@ -77,6 +81,8 @@ var GroupTabsByCollection = {
 			if (st.debounceTimer) window.clearTimeout(st.debounceTimer);
 		}
 		this._state.delete(window);
+		// Leave saved state intact — it will be restored on the next startup.
+		// Only clear it on a full uninstall (handled by shutdown/uninstall hooks).
 
 		const data = this._windows.get(window);
 		if (!data) return;
@@ -284,6 +290,7 @@ var GroupTabsByCollection = {
 		this._buildGroupState(window, tabInfos, existingOverrides);
 		this._renderGroupChips(window, "groupTabs");
 		this._setupTabBarObserver(window);
+		this._saveState(window);
 	},
 
 	async _buildTabInfos(tabs) {
@@ -598,6 +605,7 @@ var GroupTabsByCollection = {
 				const tabBar = window.document.getElementById("tab-bar-container");
 				if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 			}
+			this._saveState(window);
 		};
 
 		let _chipFiredFromMousedown = false;
@@ -680,6 +688,7 @@ var GroupTabsByCollection = {
 		if (st) st.groups = st.groups.filter((g) => g !== group);
 		this._renderGroupChips(window, "closeGroup");
 		this._setupTabBarObserver(window);
+		this._saveState(window);
 	},
 
 	// ── Tab context menu ──────────────────────────────────────────────────────
@@ -769,6 +778,7 @@ var GroupTabsByCollection = {
 			const tabBar = window.document.getElementById("tab-bar-container");
 			if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 		}
+		this._saveState(window);
 	},
 
 	_removeTabFromGroup(window, tabId) {
@@ -784,6 +794,7 @@ var GroupTabsByCollection = {
 			const tabBar = window.document.getElementById("tab-bar-container");
 			if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 		}
+		this._saveState(window);
 	},
 
 	// ── Item context menu: "Open in tab group(s)" ────────────────────────────
@@ -847,6 +858,103 @@ var GroupTabsByCollection = {
 			e.dataTransfer.setData("text/x-gtbc-tab-id", tabEl.dataset.id);
 			e.dataTransfer.effectAllowed = "move";
 		});
+	},
+
+	// ── State persistence ─────────────────────────────────────────────────────
+
+	_saveState(window) {
+		const st = this._state.get(window);
+		if (!st || st.groups.length === 0) {
+			try { Zotero.Prefs.clear("extensions.group-tabs-by-collection.state"); } catch (e) {}
+			return;
+		}
+
+		const ZoteroTabs = window.Zotero_Tabs;
+		const allTabs = ZoteroTabs?._tabs || [];
+
+		// Tab IDs are ephemeral — translate overrides to itemId keys for storage.
+		const itemOverrides = {};
+		for (const [tabId, groupName] of (st.overrides ?? new Map())) {
+			const tab = allTabs.find((t) => t.id === tabId);
+			const itemID = tab?.data?.itemID;
+			if (itemID) itemOverrides[String(itemID)] = groupName;
+		}
+
+		const data = {
+			groups: st.groups.map((g) => ({ name: g.name, color: g.color, collapsed: g.collapsed })),
+			overrides: itemOverrides,
+		};
+
+		try {
+			Zotero.Prefs.set(
+				"extensions.group-tabs-by-collection.state",
+				JSON.stringify(data)
+			);
+		} catch (e) {
+			Zotero.debug(`GTBC: failed to save state: ${e}`);
+		}
+	},
+
+	async _restoreState(window) {
+		// Don't clobber a grouping the user has already set up this session.
+		if ((this._state.get(window)?.groups.length ?? 0) > 0) return;
+
+		let data;
+		try {
+			const raw = Zotero.Prefs.get("extensions.group-tabs-by-collection.state");
+			if (!raw) return;
+			data = JSON.parse(raw);
+		} catch (e) {
+			Zotero.debug(`GTBC: failed to load saved state: ${e}`);
+			return;
+		}
+
+		if (!data?.groups?.length) return;
+
+		const ZoteroTabs = window.Zotero_Tabs;
+		if (!ZoteroTabs) return;
+
+		const allTabs = ZoteroTabs._tabs || [];
+		const readerTabs = allTabs.filter(
+			(t) => t.type === "reader" || t.type === "reader-unloaded" || t.type === "note"
+		);
+		if (readerTabs.length === 0) return;
+
+		const tabInfos = await this._buildTabInfos(readerTabs);
+		// Auto-resolve multi-collection conflicts silently on restore.
+		for (const ti of tabInfos.filter((ti) => ti.collections.length > 1)) {
+			ti.selectedCollection = ti.collections
+				.slice()
+				.sort((a, b) => a.name.localeCompare(b.name))[0];
+		}
+
+		// Translate saved itemId overrides back to current tab IDs.
+		const overrides = new Map();
+		for (const ti of tabInfos) {
+			const itemID = ti.tab.data?.itemID;
+			const savedGroup = itemID && data.overrides?.[String(itemID)];
+			if (savedGroup) overrides.set(ti.tab.id, savedGroup);
+		}
+
+		this._applyGrouping(window, tabInfos, ZoteroTabs, overrides);
+		this._buildGroupState(window, tabInfos, overrides);
+
+		// Overlay the saved colours and collapsed states.  _buildGroupState
+		// assigns defaults for "new" groups; we want the user's last-seen values.
+		const st = this._state.get(window);
+		if (st) {
+			const savedByName = new Map(data.groups.map((g) => [g.name, g]));
+			for (const g of st.groups) {
+				const saved = savedByName.get(g.name);
+				if (saved) {
+					g.color = saved.color;
+					g.collapsed = saved.collapsed;
+				}
+			}
+		}
+
+		this._renderGroupChips(window, "restore");
+		this._setupTabBarObserver(window);
 	},
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
