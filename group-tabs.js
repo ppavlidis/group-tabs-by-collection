@@ -78,8 +78,12 @@ var GroupTabsByCollection = {
 		const doc = window.document;
 		for (const id of data.addedElementIDs) doc.getElementById(id)?.remove();
 
-		// Also remove any lingering chips from the tab bar.
+		// Remove lingering chips and clear tab tints.
 		for (const chip of doc.querySelectorAll(".gtbc-chip")) chip.remove();
+		for (const el of doc.querySelectorAll(".tab[data-gtbc-group]")) {
+			el.style.backgroundColor = "";
+			el.removeAttribute("data-gtbc-group");
+		}
 
 		this._windows.delete(window);
 	},
@@ -362,15 +366,25 @@ var GroupTabsByCollection = {
 			g.tabIds = g.tabIds.filter((id) => openTabIds.has(id));
 		}
 
-		// ── 3. Apply collapsed/expanded visibility to each tab element ──────
+		// ── 3. Clear previous tints so stale colour doesn't linger ───────────
+		for (const el of tabBar.querySelectorAll(".tab[data-gtbc-group]")) {
+			el.style.backgroundColor = "";
+			el.removeAttribute("data-gtbc-group");
+		}
+
+		// ── 4. Apply collapsed/expanded visibility + group tint ────────────
 		for (const g of st.groups) {
+			const tint = this._hexToRgba(g.color, 0.15);
 			for (const tabId of g.tabIds) {
 				const el = tabBar.querySelector(`.tab[data-id="${tabId}"]`);
-				if (el) el.style.display = g.collapsed ? "none" : "";
+				if (!el) continue;
+				el.style.display = g.collapsed ? "none" : "";
+				el.style.backgroundColor = tint;
+				el.dataset.gtbcGroup = g.name; // marker for clearing next time
 			}
 		}
 
-		// ── 4. Insert a chip before each group's first (non-hidden) tab ─────
+		// ── 5. Insert a chip before each group's first tab ────────────────────
 		for (const g of st.groups) {
 			if (g.tabIds.length === 0) continue;
 
@@ -508,6 +522,13 @@ var GroupTabsByCollection = {
 	},
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
+
+	_hexToRgba(hex, alpha) {
+		const r = parseInt(hex.slice(1, 3), 16);
+		const g = parseInt(hex.slice(3, 5), 16);
+		const b = parseInt(hex.slice(5, 7), 16);
+		return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+	},
 
 	_escapeHtml(s) {
 		return String(s)
