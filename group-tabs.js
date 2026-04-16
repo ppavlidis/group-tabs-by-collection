@@ -159,6 +159,15 @@ var GroupTabsByCollection = {
 			// A short-lived flag prevents both from firing in the same interaction.
 			let _btnFiredFromMousedown = false;
 
+			// Prevent a double-click on the button from triggering the OS
+			// window-maximise behaviour (the tab bar sits in the title-bar drag
+			// region on Windows; -moz-window-dragging:no-drag in CSS is the
+			// primary fix, this is belt-and-suspenders).
+			btn.addEventListener("dblclick", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			});
+
 			// Use mousedown instead of click so the action fires on the first
 			// interaction even when the Zotero window was not already focused
 			// (Windows swallows the click event that brings the window forward).

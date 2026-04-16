@@ -18,6 +18,10 @@
 	opacity: 0.75;
 	align-self: center;
 	transition: opacity 0.1s, background 0.1s;
+	/* Remove this element from the OS title-bar drag region on Windows/Linux.
+	   Without this, the first click focuses the window (not the button), and a
+	   double-click toggles window maximise instead of running groupTabs twice. */
+	-moz-window-dragging: no-drag;
 }
 
 .gtbc-group-button:hover {
@@ -79,6 +83,7 @@
 	flex-shrink: 0;
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
 	transition: filter 0.12s;
+	-moz-window-dragging: no-drag; /* don't treat chips as title-bar drag area */
 }
 
 .gtbc-chip:hover {
