@@ -883,7 +883,15 @@ var GroupTabsByCollection = {
 					(n) => n.classList?.contains?.("gtbc-chip")
 				)
 			);
-			if (!chipRemoved) return;
+			// Also fire when a new tab element appears — the new tab won't have
+			// been assigned to a group yet and step 3 of _renderGroupChips will
+			// slot it in if its collection matches an existing group.
+			const tabAdded = mutations.some((m) =>
+				Array.from(m.addedNodes).some(
+					(n) => n.classList?.contains?.("tab") && n.dataset?.id
+				)
+			);
+			if (!chipRemoved && !tabAdded) return;
 
 			if (st.debounceTimer) window.clearTimeout(st.debounceTimer);
 			st.debounceTimer = window.setTimeout(() => {
