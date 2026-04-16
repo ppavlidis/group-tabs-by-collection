@@ -33,6 +33,14 @@
 	pointer-events: none;
 }
 
+/* Suppress focus ring — these elements use mousedown so focus is never
+   intentionally moved to them. Without this, Windows draws a focus rect
+   on first click which makes the control feel like it needs a double-click. */
+.gtbc-group-button:focus,
+.gtbc-chip:focus {
+	outline: none;
+}
+
 /* ── Group chip ──────────────────────────────────────────────────────────── */
 
 /*

@@ -142,7 +142,12 @@ var GroupTabsByCollection = {
 				<rect x="0.5" y="7.5" width="5" height="5" rx="1"/>
 				<rect x="7.5" y="7.5" width="5" height="5" rx="1"/>
 			</svg>`;
-			btn.addEventListener("click", (e) => {
+			// Use mousedown instead of click so the action fires on the first
+			// interaction even when the Zotero window was not already focused
+			// (Windows swallows the click event that brings the window forward).
+			btn.addEventListener("mousedown", (e) => {
+				if (e.button !== 0) return; // left button only
+				e.preventDefault();         // prevent focus-steal
 				e.stopPropagation();
 				this.groupTabs(window);
 			});
@@ -499,7 +504,13 @@ var GroupTabsByCollection = {
 			? `Expand "${group.name}" (${group.tabIds.length} tab${group.tabIds.length === 1 ? "" : "s"})`
 			: `Collapse "${group.name}"`;
 
-		chip.addEventListener("click", (e) => {
+		// mousedown fires before the window-focus event on Windows, so the
+		// collapse/expand action works on the very first click even when the
+		// Zotero window was not focused. preventDefault stops the chip from
+		// stealing keyboard focus (which would also cause the double-click feel).
+		chip.addEventListener("mousedown", (e) => {
+			if (e.button !== 0) return; // left button only; right-click → contextmenu
+			e.preventDefault();
 			e.stopPropagation();
 			group.collapsed = !group.collapsed;
 			const st = this._state.get(window);
