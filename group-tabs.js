@@ -142,13 +142,42 @@ var GroupTabsByCollection = {
 				<rect x="0.5" y="7.5" width="5" height="5" rx="1"/>
 				<rect x="7.5" y="7.5" width="5" height="5" rx="1"/>
 			</svg>`;
+
+			// Flash the button on every confirmed activation so users get
+			// immediate feedback even when no tabs are open yet.
+			const flashBtn = () => {
+				btn.classList.add("gtbc-group-button--active");
+				window.setTimeout(
+					() => btn.classList.remove("gtbc-group-button--active"),
+					150
+				);
+			};
+
+			// Handle both mousedown AND click as a fallback:
+			// - mousedown fires before focus-management on Windows (first click works)
+			// - click is kept as safety net in case mousedown is swallowed somewhere
+			// A short-lived flag prevents both from firing in the same interaction.
+			let _btnFiredFromMousedown = false;
+
 			// Use mousedown instead of click so the action fires on the first
 			// interaction even when the Zotero window was not already focused
 			// (Windows swallows the click event that brings the window forward).
 			btn.addEventListener("mousedown", (e) => {
-				if (e.button !== 0) return; // left button only
-				e.preventDefault();         // prevent focus-steal
+				if (e.button !== 0) return;
+				e.preventDefault();
 				e.stopPropagation();
+				_btnFiredFromMousedown = true;
+				flashBtn();
+				this.groupTabs(window);
+			});
+
+			btn.addEventListener("click", (e) => {
+				if (_btnFiredFromMousedown) {
+					_btnFiredFromMousedown = false;
+					return;
+				}
+				e.stopPropagation();
+				flashBtn();
 				this.groupTabs(window);
 			});
 			container.appendChild(btn);
@@ -221,7 +250,7 @@ var GroupTabsByCollection = {
 
 		const allTabs = ZoteroTabs._tabs || [];
 		const readerTabs = allTabs.filter(
-			(t) => t.type === "reader" || t.type === "note"
+			(t) => t.type === "reader" || t.type === "reader-unloaded" || t.type === "note"
 		);
 
 		if (readerTabs.length === 0) {
@@ -243,7 +272,7 @@ var GroupTabsByCollection = {
 
 		this._applyGrouping(window, tabInfos, ZoteroTabs);
 		this._buildGroupState(window, tabInfos);
-		this._renderGroupChips(window);
+		this._renderGroupChips(window, "groupTabs");
 		this._setupTabBarObserver(window);
 	},
 
@@ -411,7 +440,7 @@ var GroupTabsByCollection = {
 		this._state.set(window, { groups, tabBarObs: null, debounceTimer: null });
 	},
 
-	_renderGroupChips(window) {
+	_renderGroupChips(window, source) {
 		const st = this._state.get(window);
 		if (!st) return;
 
@@ -423,18 +452,20 @@ var GroupTabsByCollection = {
 		// 1. Remove stale chips.
 		for (const chip of tabBar.querySelectorAll(".gtbc-chip")) chip.remove();
 
-		// 2. Sync: drop tabIds Zotero has since closed.
+		// 2. Build the set of currently-open tab IDs.
+		//    READ-ONLY — do NOT mutate g.tabIds here.  The observer fires during tab
+		//    creation when Zotero._tabs can be momentarily incomplete; a destructive
+		//    filter at that instant would permanently drop valid tabs from their groups.
+		//    Stale IDs are simply skipped in steps 5 and 6; actual cleanup happens only
+		//    in groupTabs() which runs at a stable, user-initiated moment.
 		const openTabIds = new Set((ZoteroTabs?._tabs || []).map((t) => t.id));
-		for (const g of st.groups) {
-			g.tabIds = g.tabIds.filter((id) => openTabIds.has(id));
-		}
 
 		// 3. Auto-assign newly opened tabs that belong to an existing group.
 		//    This handles the "opened more PDFs after grouping" case without
 		//    requiring the user to re-run Group Tabs.
 		const groupedIds = new Set(st.groups.flatMap((g) => g.tabIds));
 		const allReaderTabs = (ZoteroTabs?._tabs || []).filter(
-			(t) => t.type === "reader" || t.type === "note"
+			(t) => t.type === "reader" || t.type === "reader-unloaded" || t.type === "note"
 		);
 		for (const tab of allReaderTabs) {
 			if (groupedIds.has(tab.id)) continue;
@@ -463,6 +494,7 @@ var GroupTabsByCollection = {
 		for (const g of st.groups) {
 			const tint = this._hexToRgba(g.color, 0.15);
 			for (const tabId of g.tabIds) {
+				if (!openTabIds.has(tabId)) continue; // skip stale IDs without dropping them
 				const el = tabBar.querySelector(`.tab[data-id="${tabId}"]`);
 				if (!el) continue;
 				el.style.display = g.collapsed ? "none" : "";
@@ -471,12 +503,11 @@ var GroupTabsByCollection = {
 			}
 		}
 
-		// 6. Insert a chip before each group's first tab.
+		// 6. Insert a chip before each group's first *open* tab.
 		for (const g of st.groups) {
-			if (g.tabIds.length === 0) continue;
-			const anchorEl = tabBar.querySelector(
-				`.tab[data-id="${g.tabIds[0]}"]`
-			);
+			const firstOpenId = g.tabIds.find((id) => openTabIds.has(id));
+			if (!firstOpenId) continue;
+			const anchorEl = tabBar.querySelector(`.tab[data-id="${firstOpenId}"]`);
 			if (!anchorEl) continue;
 			anchorEl.parentNode.insertBefore(
 				this._makeChip(doc, g, window),
@@ -504,22 +535,34 @@ var GroupTabsByCollection = {
 			? `Expand "${group.name}" (${group.tabIds.length} tab${group.tabIds.length === 1 ? "" : "s"})`
 			: `Collapse "${group.name}"`;
 
-		// mousedown fires before the window-focus event on Windows, so the
-		// collapse/expand action works on the very first click even when the
-		// Zotero window was not focused. preventDefault stops the chip from
-		// stealing keyboard focus (which would also cause the double-click feel).
-		chip.addEventListener("mousedown", (e) => {
-			if (e.button !== 0) return; // left button only; right-click → contextmenu
-			e.preventDefault();
-			e.stopPropagation();
+		const _toggleCollapse = () => {
 			group.collapsed = !group.collapsed;
 			const st = this._state.get(window);
 			if (st?.tabBarObs) st.tabBarObs.disconnect();
-			this._renderGroupChips(window);
+			this._renderGroupChips(window, "toggle");
 			if (st?.tabBarObs) {
 				const tabBar = window.document.getElementById("tab-bar-container");
 				if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 			}
+		};
+
+		let _chipFiredFromMousedown = false;
+
+		chip.addEventListener("mousedown", (e) => {
+			if (e.button !== 0) return;
+			e.preventDefault();
+			e.stopPropagation();
+			_chipFiredFromMousedown = true;
+			_toggleCollapse();
+		});
+
+		chip.addEventListener("click", (e) => {
+			if (_chipFiredFromMousedown) {
+				_chipFiredFromMousedown = false;
+				return;
+			}
+			e.stopPropagation();
+			_toggleCollapse();
 		});
 
 		chip.addEventListener("contextmenu", (e) => {
@@ -562,7 +605,7 @@ var GroupTabsByCollection = {
 		if (st?.tabBarObs) st.tabBarObs.disconnect();
 		ZoteroTabs.close([...group.tabIds]);
 		if (st) st.groups = st.groups.filter((g) => g !== group);
-		this._renderGroupChips(window);
+		this._renderGroupChips(window, "closeGroup");
 		this._setupTabBarObserver(window);
 	},
 
@@ -645,7 +688,7 @@ var GroupTabsByCollection = {
 		}
 
 		if (st.tabBarObs) st.tabBarObs.disconnect();
-		this._renderGroupChips(window);
+		this._renderGroupChips(window, "addToGroup");
 		if (st.tabBarObs) {
 			const tabBar = window.document.getElementById("tab-bar-container");
 			if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
@@ -659,7 +702,7 @@ var GroupTabsByCollection = {
 			g.tabIds = g.tabIds.filter((id) => id !== tabId);
 		}
 		if (st.tabBarObs) st.tabBarObs.disconnect();
-		this._renderGroupChips(window);
+		this._renderGroupChips(window, "removeFromGroup");
 		if (st.tabBarObs) {
 			const tabBar = window.document.getElementById("tab-bar-container");
 			if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
@@ -712,7 +755,7 @@ var GroupTabsByCollection = {
 				// Abort if a new grouping run has replaced the state.
 				if (this._state.get(window) !== st) return;
 				st.tabBarObs.disconnect();
-				this._renderGroupChips(window);
+				this._renderGroupChips(window, "observer");
 				st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 			}, 60);
 		});

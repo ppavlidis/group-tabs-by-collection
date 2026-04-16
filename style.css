@@ -41,6 +41,14 @@
 	outline: none;
 }
 
+/* Visible flash when the group button fires — gives immediate feedback
+   on Mac when there are no open tabs and no alert would appear yet. */
+.gtbc-group-button--active {
+	opacity: 1 !important;
+	background: var(--fill-quaternary, rgba(0, 0, 0, 0.18)) !important;
+	transition: none !important;
+}
+
 /* ── Group chip ──────────────────────────────────────────────────────────── */
 
 /*
