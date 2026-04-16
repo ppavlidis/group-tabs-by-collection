@@ -59,4 +59,4 @@ Then install the resulting `group-tabs-by-collection.xpi` as above.
 
 ## Notes
 
-Groups are not persisted across Zotero restarts — click the four-box button to regroup after reopening your tabs.
+Group assignments are not persisted across Zotero restarts. Your tabs will still be open after restarting, but the grouping will be gone — click the four-box button to regroup them.
