@@ -13,13 +13,14 @@ When you have many PDFs or snapshots open at once, the Zotero tab bar becomes a 
 - A coloured **group chip** appears before each collection's first tab, labelled with the collection name.
 - **Click a chip** to collapse the group — the tabs fold away and the chip shows a count badge. Click again to expand.
 - **Right-click a chip** for a context menu with **"Close all tabs in …"**.
-- **Right-click a tab** for an **"Add to tab group"** submenu to move it into an existing group.
+- **Right-click a tab** for a **"Move to group"** submenu to move it into an existing group — the assignment persists if you re-run the command.
 - **Right-click items** in the item list for an **"Open in tab group(s)"** option that opens and groups them in one step.
 - When there are multiple groups, all start **collapsed** so you get an instant overview. When everything belongs to one collection the group starts expanded (collapsing it would leave nothing visible).
 - Newly opened tabs are automatically assigned to an existing group if they belong to that collection — no need to re-run the command.
 - Up to 8 distinct colours are assigned automatically (blue, green, orange, purple, teal, rose, amber, indigo).
 - Tabs within a group are tinted with that group's colour.
 - Items with no collection are placed at the end, ungrouped.
+- **Drag a tab** onto a group chip to move it into that group — the assignment is persistent.
 
 ## Usage
 

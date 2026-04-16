@@ -13,6 +13,10 @@
 				{
 					"version": "1.1.2",
 					"update_link": "https://github.com/ppavlidis/group-tabs-by-collection/releases/download/v1.1.2/group-tabs-by-collection.xpi"
+				},
+				{
+					"version": "1.2.0",
+					"update_link": "https://github.com/ppavlidis/group-tabs-by-collection/releases/download/v1.2.0/group-tabs-by-collection.xpi"
 				}
 			]
 		}

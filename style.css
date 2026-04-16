@@ -94,6 +94,13 @@
 	filter: brightness(0.88);
 }
 
+/* Drop-target highlight when a tab is dragged over a chip */
+.gtbc-chip--drop-target {
+	filter: brightness(1.25);
+	outline: 2px solid rgba(255, 255, 255, 0.8);
+	outline-offset: 1px;
+}
+
 /* Coloured dot — slightly lighter than the pill background */
 .gtbc-chip-dot {
 	display: inline-block;

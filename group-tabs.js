@@ -279,8 +279,9 @@ var GroupTabsByCollection = {
 			if (!proceed) return;
 		}
 
-		this._applyGrouping(window, tabInfos, ZoteroTabs);
-		this._buildGroupState(window, tabInfos);
+		const existingOverrides = this._state.get(window)?.overrides ?? new Map();
+		this._applyGrouping(window, tabInfos, ZoteroTabs, existingOverrides);
+		this._buildGroupState(window, tabInfos, existingOverrides);
 		this._renderGroupChips(window, "groupTabs");
 		this._setupTabBarObserver(window);
 	},
@@ -359,15 +360,23 @@ var GroupTabsByCollection = {
 		);
 	},
 
-	_applyGrouping(window, tabInfos, ZoteroTabs) {
+	_applyGrouping(window, tabInfos, ZoteroTabs, overrides = new Map()) {
+		// Build groups using override name (if any) in place of collection name
+		// so manually-moved tabs end up physically next to their assigned group.
 		const groups = new Map();
 		const uncollected = [];
 
 		for (const ti of tabInfos) {
-			const c = ti.selectedCollection;
-			if (!c) { uncollected.push(ti); continue; }
-			if (!groups.has(c.name)) groups.set(c.name, { collection: c, items: [] });
-			groups.get(c.name).items.push(ti);
+			const overrideName = overrides.get(ti.tab.id);
+			const groupName = overrideName ?? ti.selectedCollection?.name;
+			if (!groupName) { uncollected.push(ti); continue; }
+			if (!groups.has(groupName)) {
+				groups.set(groupName, {
+					collection: overrideName ? { name: overrideName } : ti.selectedCollection,
+					items: [],
+				});
+			}
+			groups.get(groupName).items.push(ti);
 		}
 
 		const sorted = Array.from(groups.values()).sort((a, b) =>
@@ -389,7 +398,7 @@ var GroupTabsByCollection = {
 
 	// ── Group state & chip rendering ──────────────────────────────────────────
 
-	_buildGroupState(window, tabInfos) {
+	_buildGroupState(window, tabInfos, overrides = new Map()) {
 		// Cancel any in-flight debounce timer from the old state before
 		// replacing it, so the old observer callback cannot fire after we set
 		// up the new state and inadvertently reconnect a dead observer.
@@ -446,7 +455,32 @@ var GroupTabsByCollection = {
 			if (g.collapsed === null) g.collapsed = hasMultiple;
 		}
 
-		this._state.set(window, { groups, tabBarObs: null, debounceTimer: null });
+		// Apply manual overrides: move tabs from their collection-assigned group
+		// to the group the user explicitly chose.  Do this after colour/collapse
+		// assignment so the overridden group still gets its usual styling.
+		const openTabIdSet = new Set(tabInfos.map(ti => ti.tab.id));
+		const groupNameSet = new Set(groups.map(g => g.name));
+		// Prune stale overrides (tab closed, or target group no longer exists).
+		for (const [tabId, targetName] of overrides) {
+			if (!openTabIdSet.has(tabId) || !groupNameSet.has(targetName)) {
+				overrides.delete(tabId);
+			}
+		}
+		// Apply valid overrides.
+		for (const [tabId, targetName] of overrides) {
+			const target = groups.find(g => g.name === targetName);
+			if (!target) continue;
+			for (const g of groups) {
+				if (g !== target) g.tabIds = g.tabIds.filter(id => id !== tabId);
+			}
+			if (!target.tabIds.includes(tabId)) target.tabIds.push(tabId);
+		}
+		// Remove any groups left empty after override application.
+		const nonEmpty = groups.filter(g => g.tabIds.length > 0);
+		groups.length = 0;
+		nonEmpty.forEach(g => groups.push(g));
+
+		this._state.set(window, { groups, tabBarObs: null, debounceTimer: null, overrides });
 	},
 
 	_renderGroupChips(window, source) {
@@ -470,20 +504,30 @@ var GroupTabsByCollection = {
 		const openTabIds = new Set((ZoteroTabs?._tabs || []).map((t) => t.id));
 
 		// 3. Auto-assign newly opened tabs that belong to an existing group.
-		//    This handles the "opened more PDFs after grouping" case without
-		//    requiring the user to re-run Group Tabs.
+		//    Manual overrides take precedence over collection-based assignment.
+		const overrides = st.overrides ?? new Map();
 		const groupedIds = new Set(st.groups.flatMap((g) => g.tabIds));
 		const allReaderTabs = (ZoteroTabs?._tabs || []).filter(
 			(t) => t.type === "reader" || t.type === "reader-unloaded" || t.type === "note"
 		);
 		for (const tab of allReaderTabs) {
 			if (groupedIds.has(tab.id)) continue;
+			// Honour manual override first.
+			const overrideName = overrides.get(tab.id);
+			if (overrideName) {
+				const target = st.groups.find(g => g.name === overrideName);
+				if (target) {
+					target.tabIds.push(tab.id);
+					groupedIds.add(tab.id);
+				}
+				continue;
+			}
+			// Fall back to collection-based assignment.
 			const item = this._getParentItem(tab.data?.itemID);
 			if (!item) continue;
 			const raw = item.getCollections()
 				.map((id) => Zotero.Collections.get(id)).filter(Boolean);
 			const cols = this._filterToLeafCollections(raw);
-			// Use first matching group (alphabetical order, same as explicit grouping).
 			const match = cols
 				.map((c) => st.groups.find((g) => g.name === c.name))
 				.find(Boolean);
@@ -509,6 +553,7 @@ var GroupTabsByCollection = {
 				el.style.display = g.collapsed ? "none" : "";
 				el.style.backgroundColor = tint;
 				el.dataset.gtbcGroup = g.name;
+				el.setAttribute("draggable", "true");
 			}
 		}
 
@@ -580,6 +625,25 @@ var GroupTabsByCollection = {
 			this._showChipContextMenu(doc, window, group, chip);
 		});
 
+		// Drop target: accept a tab dragged from the tab bar.
+		chip.addEventListener("dragover", (e) => {
+			if (!e.dataTransfer.types.includes("text/x-gtbc-tab-id")) return;
+			e.preventDefault();
+			e.dataTransfer.dropEffect = "move";
+			chip.classList.add("gtbc-chip--drop-target");
+		});
+		chip.addEventListener("dragleave", () => {
+			chip.classList.remove("gtbc-chip--drop-target");
+		});
+		chip.addEventListener("drop", (e) => {
+			e.preventDefault();
+			chip.classList.remove("gtbc-chip--drop-target");
+			const tabId = e.dataTransfer.getData("text/x-gtbc-tab-id");
+			if (tabId && tabId !== group.tabIds[0]) {
+				this._addTabToGroup(window, tabId, group);
+			}
+		});
+
 		return chip;
 	},
 
@@ -633,7 +697,7 @@ var GroupTabsByCollection = {
 		const currentGroup = this._findGroupForTab(window, tabId);
 
 		const addMenu = doc.createElementNS(XUL, "menu");
-		addMenu.setAttribute("label", "Add to tab group");
+		addMenu.setAttribute("label", "Move to group");
 		const addPopup = doc.createElementNS(XUL, "menupopup");
 
 		for (const g of st.groups) {
@@ -683,6 +747,9 @@ var GroupTabsByCollection = {
 			g.tabIds = g.tabIds.filter((id) => id !== tabId);
 		}
 		targetGroup.tabIds.push(tabId);
+		// Record manual override so this assignment survives re-grouping.
+		if (!st.overrides) st.overrides = new Map();
+		st.overrides.set(tabId, targetGroup.name);
 
 		// Move tab to follow the last existing member of the target group.
 		const allTabs = ZoteroTabs._tabs || [];
@@ -710,6 +777,7 @@ var GroupTabsByCollection = {
 		for (const g of st.groups) {
 			g.tabIds = g.tabIds.filter((id) => id !== tabId);
 		}
+		st.overrides?.delete(tabId);
 		if (st.tabBarObs) st.tabBarObs.disconnect();
 		this._renderGroupChips(window, "removeFromGroup");
 		if (st.tabBarObs) {
@@ -770,6 +838,15 @@ var GroupTabsByCollection = {
 		});
 
 		st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
+
+		// Delegated dragstart: tag any tab element drag with its GTBC tab ID
+		// so chips can identify which tab is being dropped onto them.
+		tabBar.addEventListener("dragstart", (e) => {
+			const tabEl = e.target.closest?.(".tab[data-id]");
+			if (!tabEl) return;
+			e.dataTransfer.setData("text/x-gtbc-tab-id", tabEl.dataset.id);
+			e.dataTransfer.effectAllowed = "move";
+		});
 	},
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
