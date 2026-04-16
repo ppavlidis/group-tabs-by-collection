@@ -203,7 +203,13 @@ var GroupTabsByCollection = {
 
 			infos.push({
 				tab,
-				item,
+				// Use the parent item for display; attachments have uninformative
+				// names like "FullText.pdf" that aren't useful in the conflict dialog.
+				item: item
+					? (item.isAttachment() && item.parentID
+						? Zotero.Items.get(item.parentID) || item
+						: item)
+					: null,
 				collections,
 				selectedCollection:
 					collections.length === 1 ? collections[0] : null,
@@ -318,6 +324,12 @@ var GroupTabsByCollection = {
 		}
 
 		groups.sort((a, b) => a.name.localeCompare(b.name));
+
+		// Only auto-collapse when there are multiple groups.
+		// With a single group, collapsing it leaves nothing visible — not useful.
+		const autoCollapse = groups.length > 1;
+		for (const g of groups) g.collapsed = autoCollapse;
+
 		this._state.set(window, { groups, tabBarObs: null });
 	},
 
@@ -394,19 +406,64 @@ var GroupTabsByCollection = {
 		chip.addEventListener("click", (e) => {
 			e.stopPropagation();
 			group.collapsed = !group.collapsed;
-			// Pause the observer so our re-render doesn't trigger it.
 			const st = this._state.get(window);
 			if (st?.tabBarObs) st.tabBarObs.disconnect();
 			this._renderGroupChips(window);
 			if (st?.tabBarObs) {
 				const tabBar = window.document.getElementById("tab-bar-container");
-				if (tabBar) {
-					st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
-				}
+				if (tabBar) st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 			}
 		});
 
+		chip.addEventListener("contextmenu", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this._showChipContextMenu(doc, window, group, e.screenX, e.screenY);
+		});
+
 		return chip;
+	},
+
+	_showChipContextMenu(doc, window, group, screenX, screenY) {
+		const XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+		// Remove any leftover popup from a previous right-click.
+		doc.getElementById("gtbc-context-popup")?.remove();
+
+		const popup = doc.createElementNS(XUL, "menupopup");
+		popup.id = "gtbc-context-popup";
+
+		const closeAll = doc.createElementNS(XUL, "menuitem");
+		closeAll.setAttribute(
+			"label",
+			`Close all tabs in "${this._truncate(group.name, 30)}"`
+		);
+		closeAll.addEventListener("command", () =>
+			this._closeGroupTabs(window, group)
+		);
+		popup.appendChild(closeAll);
+
+		doc.documentElement.appendChild(popup);
+		popup.openPopupAtScreen(screenX, screenY, true);
+		popup.addEventListener("popuphidden", () => popup.remove(), { once: true });
+	},
+
+	_closeGroupTabs(window, group) {
+		const ZoteroTabs = window.Zotero_Tabs;
+		if (!ZoteroTabs) return;
+
+		const st = this._state.get(window);
+		if (st?.tabBarObs) st.tabBarObs.disconnect();
+
+		// Close every tab in the group; pass a copy so mutation during
+		// close doesn't affect our iteration.
+		ZoteroTabs.close([...group.tabIds]);
+
+		// Drop the group from state — it's empty now.
+		if (st) st.groups = st.groups.filter((g) => g !== group);
+
+		this._renderGroupChips(window);
+		this._setupTabBarObserver(window);
 	},
 
 	// ── Tab-bar MutationObserver ──────────────────────────────────────────────
