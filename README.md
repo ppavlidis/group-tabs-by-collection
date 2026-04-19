@@ -37,7 +37,10 @@ When you have many PDFs or snapshots open at once, the Zotero tab bar becomes a 
 
 **Subsequent runs** (groups already exist): the button only processes tabs that are not yet assigned to any group. Already-grouped tabs — including any you have manually moved — are left exactly where they are. If an ungrouped tab belongs to a collection that already has a group, it is added to that group. If it belongs to a new collection, a new group is created for it. This means you can open a handful of new papers, click the button once, and only those new papers are slotted in, without disturbing anything else.
 
-If a tab's item belongs to **multiple collections**, a confirmation dialog lists each conflict and suggests a default resolution (the first collection alphabetically).
+If a tab's item belongs to **multiple collections**, behaviour depends on how it was opened:
+- **Via the button**: a confirmation dialog lists each conflict and suggests placing the tab under the first matching collection alphabetically. You can proceed or cancel.
+- **Via auto-assign** (tab opened directly from the library while groups are active): the tab is silently placed into the first group whose collection name matches, with no prompt.
+- **On restart restore**: conflicts are resolved silently using the same alphabetical default.
 
 ## Installation
 
