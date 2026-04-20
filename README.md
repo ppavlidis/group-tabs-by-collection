@@ -13,22 +13,34 @@ When you have many PDFs or snapshots open at once, the Zotero tab bar becomes a 
 - A coloured **group chip** appears before each collection's first tab, labelled with the collection name.
 - **Click a chip** to collapse the group — the tabs fold away and the chip shows a count badge. Click again to expand.
 - **Right-click a chip** for a context menu with **"Close all tabs in …"**.
-- **Right-click a tab** for an **"Add to tab group"** submenu to move it into an existing group.
+- **Right-click a tab** for a **"Move to group"** submenu to reassign it to any existing group, or **"Remove from group"** to ungroup it entirely.
+- **Drag a tab** onto a group chip to move it into that group.
+- Manual assignments (via right-click or drag) **persist** — they survive the button being clicked again and Zotero restarts.
 - **Right-click items** in the item list for an **"Open in tab group(s)"** option that opens and groups them in one step.
 - When there are multiple groups, all start **collapsed** so you get an instant overview. When everything belongs to one collection the group starts expanded (collapsing it would leave nothing visible).
-- Newly opened tabs are automatically assigned to an existing group if they belong to that collection — no need to re-run the command.
+- Opening a PDF from a collection that already has a group **automatically slots it in** — the group chip and tint appear without any action needed.
 - Up to 8 distinct colours are assigned automatically (blue, green, orange, purple, teal, rose, amber, indigo).
 - Tabs within a group are tinted with that group's colour.
 - Items with no collection are placed at the end, ungrouped.
+- **Group state is restored automatically** after a Zotero restart — groups, colours, collapsed state, and manual assignments all come back within a couple of seconds of opening Zotero.
 
 ## Usage
 
 1. Select papers in the item list and right-click → **"Open in tab group(s)"** to open and group them in one step, or open PDFs/snapshots manually and then click the **four-box button** in the tab bar (or **Tools → Group Tabs by Collection**).
 2. Tabs are reordered and coloured group chips appear in the tab bar.
 3. Click a chip to collapse or expand that group; right-click for close-all.
-4. Newly opened tabs are automatically slotted into the correct group — run the command again only if you want a full re-sort.
+4. Any PDF you open from a grouped collection is automatically slotted in — no need to click the button again.
 
-If a tab's item belongs to **multiple collections**, a confirmation dialog lists each conflict and suggests a default resolution (the first collection alphabetically).
+### The four-box button: first run vs. subsequent runs
+
+**First run** (no groups exist yet): all open reader tabs are sorted by collection, chips are created, and tabs are physically reordered in the tab bar.
+
+**Subsequent runs** (groups already exist): the button only processes tabs that are not yet assigned to any group. Already-grouped tabs — including any you have manually moved — are left exactly where they are. If an ungrouped tab belongs to a collection that already has a group, it is added to that group. If it belongs to a new collection, a new group is created for it. This means you can open a handful of new papers, click the button once, and only those new papers are slotted in, without disturbing anything else.
+
+If a tab's item belongs to **multiple collections**, behaviour depends on how it was opened:
+- **Via the button**: a confirmation dialog lists each conflict and suggests placing the tab under the first matching collection alphabetically. You can proceed or cancel.
+- **Via auto-assign** (tab opened directly from the library while groups are active): the tab is silently placed into the first group whose collection name matches, with no prompt.
+- **On restart restore**: conflicts are resolved silently using the same alphabetical default.
 
 ## Installation
 
@@ -59,4 +71,6 @@ Then install the resulting `group-tabs-by-collection.xpi` as above.
 
 ## Notes
 
-Group assignments are not persisted across Zotero restarts. Your tabs will still be open after restarting, but the grouping will be gone — click the four-box button to regroup them.
+- **Restart behaviour:** group state is saved to Zotero's preferences store whenever it changes, and restored automatically on the next startup. Your tabs reopen as normal (Zotero's own behaviour), and within a couple of seconds the plugin re-applies groups, colours, collapsed state, and any manual assignments. No action required.
+- If a group cannot be restored — for example because all its tabs were closed before the restart — it is silently dropped.
+- Multi-collection conflicts that arise on restore are resolved automatically using the same first-alphabetically default as the manual dialog; no prompt is shown.
