@@ -125,9 +125,10 @@
 	font-size: 11px;
 }
 
-/* Collapse/expand arrow — solid Unicode triangle, fully opaque */
+/* Collapse/expand indicator (+/−) */
 .gtbc-chip-arrow {
-	font-size: 10px;
+	font-size: 12px;
+	font-weight: 600;
 	opacity: 1;
 	flex-shrink: 0;
 	line-height: 1;

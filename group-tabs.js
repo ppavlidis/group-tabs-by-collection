@@ -637,7 +637,7 @@ var GroupTabsByCollection = {
 			`<span class="gtbc-chip-dot"></span>` +
 			`<span class="gtbc-chip-name">${nameText}</span>` +
 			`<span class="gtbc-chip-count">(${n})</span>` +
-			`<span class="gtbc-chip-arrow">${group.collapsed ? "▶" : "▼"}</span>`;
+			`<span class="gtbc-chip-arrow">${group.collapsed ? "+" : "\u2212"}</span>`;
 
 		chip.title = group.collapsed
 			? `Expand "${group.name}" — ${n} tab${n === 1 ? "" : "s"}`
