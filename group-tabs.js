@@ -330,7 +330,7 @@ var GroupTabsByCollection = {
 			while (usedColors.has(this.COLORS[ci % this.COLORS.length])) ci++;
 			const color = this.COLORS[ci++ % this.COLORS.length];
 			usedColors.add(color);
-			st.groups.push({ name: colName, color, tabIds: [], collapsed: false });
+			st.groups.push({ name: colName, color, tabIds: [], collapsed: true });
 		}
 		st.groups.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -503,11 +503,10 @@ var GroupTabsByCollection = {
 			}
 		}
 
-		// Set default collapsed state for new groups only.
+		// New groups always start collapsed so the user gets an overview first.
 		// Existing groups keep whatever state the user last set.
-		const hasMultiple = groups.length > 1;
 		for (const g of groups) {
-			if (g.collapsed === null) g.collapsed = hasMultiple;
+			if (g.collapsed === null) g.collapsed = true;
 		}
 
 		// Apply manual overrides: move tabs from their collection-assigned group
@@ -600,7 +599,7 @@ var GroupTabsByCollection = {
 
 		// 5. Apply collapse state + tint to each tab element.
 		for (const g of st.groups) {
-			const tint = this._hexToRgba(g.color, 0.15);
+			const tint = this._hexToRgba(g.color, 0.25);
 			for (const tabId of g.tabIds) {
 				if (!openTabIds.has(tabId)) continue; // skip stale IDs without dropping them
 				const el = tabBar.querySelector(`.tab[data-id="${tabId}"]`);
@@ -631,18 +630,18 @@ var GroupTabsByCollection = {
 		chip.dataset.gtbcGroup = group.name;
 		chip.style.setProperty("--gtbc-color", group.color);
 
-		const label = group.collapsed
-			? `${group.name} (${group.tabIds.length})`
-			: group.name;
+		const n = group.tabIds.length;
+		const nameText = this._escapeHtml(this._truncate(group.name, 18));
 
 		chip.innerHTML =
 			`<span class="gtbc-chip-dot"></span>` +
-			`<span class="gtbc-chip-name">${this._escapeHtml(this._truncate(label, 22))}</span>` +
+			`<span class="gtbc-chip-name">${nameText}</span>` +
+			`<span class="gtbc-chip-count">(${n})</span>` +
 			`<span class="gtbc-chip-arrow">${group.collapsed ? "▶" : "▼"}</span>`;
 
 		chip.title = group.collapsed
-			? `Expand "${group.name}" (${group.tabIds.length} tab${group.tabIds.length === 1 ? "" : "s"})`
-			: `Collapse "${group.name}"`;
+			? `Expand "${group.name}" — ${n} tab${n === 1 ? "" : "s"}`
+			: `Collapse "${group.name}" — ${n} tab${n === 1 ? "" : "s"}`;
 
 		const _toggleCollapse = () => {
 			group.collapsed = !group.collapsed;

@@ -113,9 +113,16 @@
 
 /* Collection name, truncated by max-width */
 .gtbc-chip-name {
-	max-width: 130px;
+	max-width: 110px;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* Tab count — always visible, slightly dimmed to read as secondary */
+.gtbc-chip-count {
+	opacity: 0.8;
+	flex-shrink: 0;
+	font-size: 11px;
 }
 
 /* Collapse/expand arrow — solid Unicode triangle, fully opaque */
