@@ -125,11 +125,9 @@
 	font-size: 11px;
 }
 
-/* Collapse/expand indicator (+/−) */
-.gtbc-chip-arrow {
-	font-size: 12px;
-	font-weight: 600;
-	opacity: 1;
-	flex-shrink: 0;
-	line-height: 1;
+/* Underline on the chip when its group is expanded — the only open/closed cue,
+   matching Chrome's tab-group visual language. Inset shadow avoids layout shift. */
+.gtbc-chip--expanded {
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30),
+	            inset 0 -2px 0 rgba(255, 255, 255, 0.55);
 }

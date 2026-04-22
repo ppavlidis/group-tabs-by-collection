@@ -633,11 +633,11 @@ var GroupTabsByCollection = {
 		const n = group.tabIds.length;
 		const nameText = this._escapeHtml(this._truncate(group.name, 18));
 
+		chip.className = `gtbc-chip${group.collapsed ? "" : " gtbc-chip--expanded"}`;
 		chip.innerHTML =
 			`<span class="gtbc-chip-dot"></span>` +
 			`<span class="gtbc-chip-name">${nameText}</span>` +
-			`<span class="gtbc-chip-count">(${n})</span>` +
-			`<span class="gtbc-chip-arrow">${group.collapsed ? "+" : "\u2212"}</span>`;
+			`<span class="gtbc-chip-count">(${n})</span>`;
 
 		chip.title = group.collapsed
 			? `Expand "${group.name}" — ${n} tab${n === 1 ? "" : "s"}`
