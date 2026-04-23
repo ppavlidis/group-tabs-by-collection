@@ -16,6 +16,9 @@ var GroupTabsByCollection = {
 	version: null,
 	rootURI: null,
 	_windows: new Map(),
+	// Tab ID currently being dragged; set on dragstart, cleared on dragend.
+	// Used by chip drop targets instead of unreliable dataTransfer type checks.
+	_draggingTabId: null,
 
 	// Per-window grouping state.
 	// { groups: GroupEntry[], tabBarObs: MutationObserver|null, debounceTimer: id|null }
@@ -624,6 +627,56 @@ var GroupTabsByCollection = {
 		}
 	},
 
+	// Assigns ungrouped tabs to existing matching groups and physically moves them
+	// into position.  Must be called with the tab-bar observer disconnected so the
+	// DOM mutations from ZoteroTabs.move() don't trigger a recursive re-render.
+	_autoAssignNewTabs(window) {
+		const st = this._state.get(window);
+		if (!st) return;
+		const ZoteroTabs = window.Zotero_Tabs;
+		if (!ZoteroTabs) return;
+
+		const overrides = st.overrides ?? new Map();
+		const groupedIds = new Set(st.groups.flatMap((g) => g.tabIds));
+		const allReaderTabs = (ZoteroTabs._tabs || []).filter(
+			(t) => t.type === "reader" || t.type === "reader-unloaded" || t.type === "note"
+		);
+
+		for (const tab of allReaderTabs) {
+			if (groupedIds.has(tab.id)) continue;
+
+			// Manual override takes precedence over collection matching.
+			const overrideName = overrides.get(tab.id);
+			let match = null;
+			if (overrideName) {
+				match = st.groups.find((g) => g.name === overrideName);
+			} else {
+				const item = this._getParentItem(tab.data?.itemID);
+				if (!item) continue;
+				const raw = item.getCollections()
+					.map((id) => Zotero.Collections.get(id)).filter(Boolean);
+				const cols = this._filterToLeafCollections(raw);
+				match = cols.map((c) => st.groups.find((g) => g.name === c.name)).find(Boolean);
+			}
+			if (!match) continue;
+
+			match.tabIds.push(tab.id);
+			groupedIds.add(tab.id);
+
+			// Physically move the tab to follow the group's last existing member.
+			const priorIds = match.tabIds.slice(0, -1);
+			const liveTabs = ZoteroTabs._tabs || [];
+			let afterIdx = -1;
+			for (let i = 0; i < liveTabs.length; i++) {
+				if (priorIds.includes(liveTabs[i].id)) afterIdx = i;
+			}
+			if (afterIdx >= 0) {
+				try { ZoteroTabs.move(tab.id, afterIdx + 1); }
+				catch (e) { Zotero.debug(`GTBC: auto-assign move failed: ${e}`); }
+			}
+		}
+	},
+
 	_makeChip(doc, group, window) {
 		const chip = doc.createElement("div");
 		chip.className = "gtbc-chip";
@@ -682,8 +735,9 @@ var GroupTabsByCollection = {
 
 		// Drop target: accept a tab dragged from the tab bar.
 		chip.addEventListener("dragover", (e) => {
-			if (!e.dataTransfer.types.includes("text/x-gtbc-tab-id")) return;
+			if (!this._draggingTabId) return;
 			e.preventDefault();
+			e.stopPropagation();
 			e.dataTransfer.dropEffect = "move";
 			chip.classList.add("gtbc-chip--drop-target");
 		});
@@ -692,9 +746,11 @@ var GroupTabsByCollection = {
 		});
 		chip.addEventListener("drop", (e) => {
 			e.preventDefault();
+			e.stopPropagation();
 			chip.classList.remove("gtbc-chip--drop-target");
-			const tabId = e.dataTransfer.getData("text/x-gtbc-tab-id");
-			if (tabId && tabId !== group.tabIds[0]) {
+			const tabId = this._draggingTabId;
+			this._draggingTabId = null;
+			if (tabId && !group.tabIds.includes(tabId)) {
 				this._addTabToGroup(window, tabId, group);
 			}
 		});
@@ -882,14 +938,24 @@ var GroupTabsByCollection = {
 					(n) => n.classList?.contains?.("gtbc-chip")
 				)
 			);
-			// Also fire when a tab element is added (auto-assign new tab to group)
-			// or removed (hide chip when the last tab in a group is closed).
-			const tabChanged = mutations.some((m) =>
-				[...m.addedNodes, ...m.removedNodes].some(
+			// Fire when a tab is genuinely added (auto-assign to existing group).
+			const tabAdded = mutations.some((m) =>
+				Array.from(m.addedNodes).some(
 					(n) => n.classList?.contains?.("tab") && n.dataset?.id
 				)
 			);
-			if (!chipRemoved && !tabChanged) return;
+			// Fire when a tab is genuinely closed — i.e. removed from the DOM and
+			// also absent from Zotero_Tabs._tabs.  Zotero internally reorders tabs
+			// by removing and re-adding them, which would also look like a removal;
+			// we skip those to avoid spurious re-renders during DnD reordering.
+			const liveTabs = window.Zotero_Tabs?._tabs || [];
+			const tabClosed = mutations.some((m) =>
+				Array.from(m.removedNodes).some((n) => {
+					if (!n.classList?.contains?.("tab") || !n.dataset?.id) return false;
+					return !liveTabs.some((t) => t.id === n.dataset.id);
+				})
+			);
+			if (!chipRemoved && !tabAdded && !tabClosed) return;
 
 			if (st.debounceTimer) window.clearTimeout(st.debounceTimer);
 			st.debounceTimer = window.setTimeout(() => {
@@ -897,6 +963,9 @@ var GroupTabsByCollection = {
 				// Abort if a new grouping run has replaced the state.
 				if (this._state.get(window) !== st) return;
 				st.tabBarObs.disconnect();
+				// Assign any new tabs to existing groups and physically move them
+				// BEFORE rendering, so the DOM is stable when tints/chips are applied.
+				this._autoAssignNewTabs(window);
 				this._renderGroupChips(window, "observer");
 				st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 			}, 60);
@@ -904,13 +973,18 @@ var GroupTabsByCollection = {
 
 		st.tabBarObs.observe(tabBar, { childList: true, subtree: true });
 
-		// Delegated dragstart: tag any tab element drag with its GTBC tab ID
-		// so chips can identify which tab is being dropped onto them.
+		// Delegated drag handlers: track which tab is being dragged so chip
+		// drop targets can accept it without relying on dataTransfer type
+		// checks, which are unreliable in Gecko during dragover.
 		tabBar.addEventListener("dragstart", (e) => {
 			const tabEl = e.target.closest?.(".tab[data-id]");
 			if (!tabEl) return;
-			e.dataTransfer.setData("text/x-gtbc-tab-id", tabEl.dataset.id);
+			this._draggingTabId = tabEl.dataset.id;
+			e.dataTransfer.setData("text/plain", tabEl.dataset.id);
 			e.dataTransfer.effectAllowed = "move";
+		});
+		tabBar.addEventListener("dragend", () => {
+			this._draggingTabId = null;
 		});
 	},
 
