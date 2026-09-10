@@ -21,6 +21,16 @@
 				{
 					"version": "1.3.0",
 					"update_link": "https://github.com/ppavlidis/group-tabs-by-collection/releases/download/v1.3.0/group-tabs-by-collection.xpi"
+				},
+				{
+					"version": "1.3.1",
+					"update_link": "https://github.com/ppavlidis/group-tabs-by-collection/releases/download/v1.3.1/group-tabs-by-collection.xpi",
+					"applications": {
+						"zotero": {
+							"strict_min_version": "7.0.0",
+							"strict_max_version": "10.*"
+						}
+					}
 				}
 			]
 		}

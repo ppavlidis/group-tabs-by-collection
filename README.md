@@ -48,7 +48,7 @@ Download the latest `group-tabs-by-collection.xpi` from the [Releases](../../rel
 
 In Zotero: **Tools → Add-ons → gear icon → Install Add-on From File…**
 
-Requires Zotero 7, 8, or 9.
+Requires Zotero 7, 8, 9, or 10.
 
 ## Building from source
 
@@ -68,6 +68,19 @@ Rename-Item group-tabs-by-collection.zip group-tabs-by-collection.xpi
 ```
 
 Then install the resulting `group-tabs-by-collection.xpi` as above.
+
+## Releasing
+
+`.github/workflows/build.yml` builds the XPI on every push and attaches it to the
+GitHub release when a `v*` tag is pushed. Bump `version` in `manifest.json` and add
+a matching entry to `updates.json` (with its `update_link` and an
+`applications.zotero` block) — the workflow refuses a tag whose version, manifest
+and update manifest disagree, and checks the built archive for the files it must
+contain. Zotero reads `updates.json` from `main` to offer in-app updates.
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
 
 ## Notes
 
